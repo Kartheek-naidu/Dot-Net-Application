@@ -1,0 +1,44 @@
+version: 0.2
+env:
+  variables:
+    PROJECT: AspNetMvcSampleApp
+    DOTNET_FRAMEWORK: 4.6.1
+
+phases:
+  pre_build:
+    commands:
+      # Install AWS CLI
+      - pip install awscli
+      - nuget restore
+      
+      # Install Docker
+      - choco install docker-cli -y
+      
+  build:
+    commands:
+      # Login to AWS ECR (if using ECR for Docker image registry)
+      - $(aws ecr get-login --no-include-email --region $AWS_DEFAULT_REGION)
+      
+      # Build Docker image from Dockerfile in repo
+      - docker build -t myapp:latest .
+      
+      # Push Docker image to AWS ECR (if using ECR for Docker image registry)
+      - docker tag myapp:latest $ECR_REPO_URL/myapp:latest
+      - docker push $ECR_REPO_URL/myapp:latest
+      
+      # Create deployment package using MSBuild
+      - MSBuild.exe MyApp.sln /t:Package /p:Configuration=Release /p:OutputPath=build_output
+      - msbuild $env:PROJECT.csproj /p:TargetFrameworkVersion=v$env:DOTNET_FRAMEWORK /p:Configuration=Release /p:DeployIisAppPath="Default Web Site" /p:PackageAsSingleFile=false /p:OutDir=C:\codebuild\artifacts\ /t:Package
+      
+  post_build:
+    commands:
+      # Deploy application to IIS using AWS CodeDeploy
+      - aws deploy create-deployment \
+        --application-name MyApp \
+        --deployment-group-name MyAppDeploymentGroup \
+        --s3-location bucket=$S3_BUCKET,key=build_output/MyApp.zip,bundleType=zip \
+        --file-exists-behavior OVERWRITE
+      
+artifacts:
+  files:
+    - MyApp.zip

@@ -1,0 +1,20 @@
+image: mcr.microsoft.com/dotnet/sdk:5.0
+
+pipelines:
+  default:
+    - step:
+        name: Build and Test
+        caches:
+          - dotnetcore
+        script:
+          - dotnet restore
+          - dotnet build
+          - dotnet test
+    - step:
+        name: Deploy to IIS
+        script:
+          - echo "Publishing the application..."
+          - dotnet publish -c Release
+          - echo "Copying the published files to the IIS server..."
+          - scp -r ./bin/Release/net5.0/publish/* user@iis-server:/path/to/application
+          - echo "Deployed to IIS server!"
